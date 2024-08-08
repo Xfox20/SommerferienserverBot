@@ -17,6 +17,8 @@ def get_server_status(address: str) -> JavaStatusResponse:
     try:
         server_status = JavaServer.lookup(address).status()
         server_status.players.sample.sort(key=lambda p: p.name)
+        server_status.players.sample = [p for p in server_status.players.sample
+                                        if p.name != "Anonymous Player"]
     except TimeoutError:
         server_status = None
     return server_status
