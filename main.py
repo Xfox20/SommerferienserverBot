@@ -1,81 +1,118 @@
-from datetime import datetime
-import requests
+import hashlib
 import json
 import os
-import hashlib
+from datetime import datetime
+
+import requests
 from mcstatus import JavaServer
+from mcstatus.status_response import JavaStatusResponse, JavaStatusPlayer
 
 jsonEncoder = json.encoder.JSONEncoder()
 jsonDecoder = json.decoder.JSONDecoder()
 
-# API request
+currentTime = datetime.now()
 
-serverAddress = os.getenv("SERVER_ADDRESS")
-status = JavaServer.lookup(serverAddress).status()
 
-playerList = [p.name for p in status.players.sample]
-with open("playerStatuses.json", "a+") as playerStatusesFile:
-    playerStatusesFile.seek(0)
-    content = playerStatusesFile.read()
-    playerStatuses = jsonDecoder.decode(content) if content else {}
+def get_server_status(address: str) -> JavaStatusResponse:
+    try:
+        server_status = JavaServer.lookup(address).status()
+        server_status.players.sample.sort(key=lambda p: p.name)
+    except TimeoutError:
+        server_status = None
+    return server_status
 
-    if not playerList:
-        playerStatuses.clear()
-    else:
-        currentTime = datetime.now().isoformat()
 
-        for playerName in list(playerStatuses.keys()):
-            if playerName not in playerList:
-                del playerStatuses[playerName]
+def sync_player_status_cache(player_list: list[JavaStatusPlayer]):
+    with open("playerStatuses.json", "a+") as player_statuses_file:
+        player_statuses_file.seek(0)
+        content = player_statuses_file.read()
+        player_statuses = jsonDecoder.decode(content) if content else {}
 
-        for player in playerList:
-            if player not in playerStatuses:
-                playerStatuses[player] = currentTime
+        for player_name in list(player_statuses):
+            if player_name not in player_list:
+                del player_statuses[player_name]
 
-with open("playerStatuses.json", "w") as playerStatusesFile:
-    playerStatusesFile.write(jsonEncoder.encode(playerStatuses))
+        for player_name in player_list:
+            if player_name.name not in player_statuses:
+                player_statuses[player_name.name] = currentTime.isoformat()
 
-motd = status.motd.to_plain()
-playerOnlineCount = status.players.online
+    with open("playerStatuses.json", "w") as player_statuses_file:
+        player_statuses_file.write(jsonEncoder.encode(player_statuses))
 
-# Send Discord message
+    return player_statuses
 
-webhookUrl = os.getenv("WEBHOOK_URL")
-webhookMessageId = os.getenv("WEBHOOK_MESSAGE_ID")
-webhookMethod = "POST"
 
-if webhookMessageId:
-    webhookMethod = "PATCH"
-    webhookUrl += f"/messages/{webhookMessageId}"
+def send_message(server_status: JavaStatusResponse, player_status_cache: dict):
+    webhook_url = os.getenv("WEBHOOK_URL")
+    webhook_message_id = os.getenv("WEBHOOK_MESSAGE_ID")
+    webhook_method = "POST"
 
-message = {
-    "embeds": [
-        {
-            "title": "Server Status",
-            "description": f"```{motd}```\n**{playerOnlineCount} player{"s" if (playerOnlineCount or 2) > 1 else ""} online**",
-            "color": 3332471,
-            "footer": {
-                "text": f"Last updated at {datetime.now().strftime("%H:%M:%S")}"
-            }
-        }
-    ]
-}
+    if webhook_message_id:
+        webhook_method = "PATCH"
+        webhook_url += f"/messages/{webhook_message_id}"
 
-playerEmbeds = [{
-    "title": playerName,
-    "image": {
-        "url": f"https://minotar.net/helm/{playerName}/30"
-    },
-    "color": int(hashlib.md5(playerName.encode()).hexdigest()[:6], 16),
-    "footer": {
-        "text": f"online since {datetime.fromisoformat(playerStatuses[playerName]).strftime("%H:%M")}"
+    headers = {"Content-Type": "application/json"}
+
+    message = compose_discord_message(server_status, player_status_cache)
+
+    requests.request(webhook_method, webhook_url, data=jsonEncoder.encode(message), headers=headers)
+
+
+def compose_discord_message(server_status: JavaStatusResponse, player_status_cache: dict) -> dict:
+    server_is_online = bool(server_status)
+
+    embeds = [create_overview_embed(server_status)]
+
+    if server_is_online:
+        player_embeds = [create_player_embed(
+            player, datetime.fromisoformat(player_status_cache[player.name]))
+            for player in server_status.players.sample]
+        embeds.extend(player_embeds)
+
+    return {
+        "embeds": embeds
     }
-} for playerName in playerStatuses]
 
-message["embeds"].extend(playerEmbeds)
 
-headers = {
-    "Content-Type": "application/json"
-}
+def create_overview_embed(server_status: JavaStatusResponse) -> dict:
+    footer = {
+        "text": f"Last updated at {datetime.now().strftime("%H:%M:%S")}"
+    }
 
-requests.request(webhookMethod, webhookUrl, data=jsonEncoder.encode(message), headers=headers)
+    if server_status:
+        embed = {
+            "title": "Server Status",
+            "description": f"```{server_status.motd.to_plain()}```\n"
+                           f"**{server_status.players.online} player"
+                           f"{"s" if (server_status.players.online or 2) > 1 else ""} online**",
+            "color": 3332471,
+            "footer": footer
+        }
+    else:
+        embed = {
+            "title": "Server Status",
+            "description": f"**offline**",
+            "color": 14500915,
+            "footer": footer
+        }
+
+    return embed
+
+
+def create_player_embed(player: JavaStatusPlayer, online_since: datetime) -> dict:
+    return {
+        "title": player.name,
+        "image": {
+            "url": f"https://minotar.net/helm/{player.name}/30"
+        },
+        "color": int(hashlib.md5(player.name.encode()).hexdigest()[:6], 16),
+        "footer": {
+            "text": f"online since {online_since.strftime("%H:%M")}"
+        }
+    }
+
+
+if __name__ == "__main__":
+    status = get_server_status(os.getenv("SERVER_ADDRESS"))
+    cache = sync_player_status_cache(status.players.sample)
+    send_message(status, cache)
