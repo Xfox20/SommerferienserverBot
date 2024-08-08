@@ -23,21 +23,27 @@ def get_server_status(address: str) -> JavaStatusResponse:
 
 
 def sync_player_status_cache(player_list: list[JavaStatusPlayer]):
+    player_statuses = get_player_status_cache()
+
+    for player_name in list(player_statuses):
+        if player_name not in player_list:
+            del player_statuses[player_name]
+
+    for player_name in player_list:
+        if player_name.name not in player_statuses:
+            player_statuses[player_name.name] = currentTime.isoformat()
+
+    with open("playerStatuses.json", "w") as player_statuses_file:
+        player_statuses_file.write(jsonEncoder.encode(player_statuses))
+
+    return player_statuses
+
+
+def get_player_status_cache() -> dict:
     with open("playerStatuses.json", "a+") as player_statuses_file:
         player_statuses_file.seek(0)
         content = player_statuses_file.read()
         player_statuses = jsonDecoder.decode(content) if content else {}
-
-        for player_name in list(player_statuses):
-            if player_name not in player_list:
-                del player_statuses[player_name]
-
-        for player_name in player_list:
-            if player_name.name not in player_statuses:
-                player_statuses[player_name.name] = currentTime.isoformat()
-
-    with open("playerStatuses.json", "w") as player_statuses_file:
-        player_statuses_file.write(jsonEncoder.encode(player_statuses))
 
     return player_statuses
 
@@ -114,5 +120,6 @@ def create_player_embed(player: JavaStatusPlayer, online_since: datetime) -> dic
 
 if __name__ == "__main__":
     status = get_server_status(os.getenv("SERVER_ADDRESS"))
-    cache = sync_player_status_cache(status.players.sample)
+    cache = sync_player_status_cache(status.players.sample)\
+        if status else get_player_status_cache()
     send_message(status, cache)
