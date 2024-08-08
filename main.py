@@ -93,7 +93,7 @@ def create_overview_embed(server_status: JavaStatusResponse) -> dict:
             "title": "Server Status",
             "description": f"```{server_status.motd.to_plain()}```\n"
                            f"**{server_status.players.online} player"
-                           f"{"s" if (server_status.players.online or 2) > 1 else ""} online**",
+                           f"{"s" if not server_status.players.online == 1 else ""} online**",
             "color": 3332471,
             "footer": footer
         }
