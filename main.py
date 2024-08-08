@@ -24,14 +24,15 @@ def get_server_status(address: str) -> JavaStatusResponse:
 
 def sync_player_status_cache(player_list: list[JavaStatusPlayer]):
     player_statuses = get_player_status_cache()
+    player_list = [p.name for p in player_list]
 
     for player_name in list(player_statuses):
         if player_name not in player_list:
             del player_statuses[player_name]
 
     for player_name in player_list:
-        if player_name.name not in player_statuses:
-            player_statuses[player_name.name] = currentTime.isoformat()
+        if player_name not in player_statuses:
+            player_statuses[player_name] = currentTime.isoformat()
 
     with open("playerStatuses.json", "w") as player_statuses_file:
         player_statuses_file.write(jsonEncoder.encode(player_statuses))
@@ -40,8 +41,7 @@ def sync_player_status_cache(player_list: list[JavaStatusPlayer]):
 
 
 def get_player_status_cache() -> dict:
-    with open("playerStatuses.json", "a+") as player_statuses_file:
-        player_statuses_file.seek(0)
+    with open("playerStatuses.json", "r") as player_statuses_file:
         content = player_statuses_file.read()
         player_statuses = jsonDecoder.decode(content) if content else {}
 
