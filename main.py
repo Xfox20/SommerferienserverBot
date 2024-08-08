@@ -41,7 +41,8 @@ def sync_player_status_cache(player_list: list[JavaStatusPlayer]):
 
 
 def get_player_status_cache() -> dict:
-    with open("playerStatuses.json", "r") as player_statuses_file:
+    with open("playerStatuses.json", "a+") as player_statuses_file:
+        player_statuses_file.seek(0)
         content = player_statuses_file.read()
         player_statuses = jsonDecoder.decode(content) if content else {}
 
