@@ -1,1 +1,2 @@
 requests~=2.32.3
+mcstatus~=11.1.1

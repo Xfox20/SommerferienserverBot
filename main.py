@@ -3,6 +3,7 @@ import requests
 import json
 import os
 import hashlib
+from mcstatus import JavaServer
 
 jsonEncoder = json.encoder.JSONEncoder()
 jsonDecoder = json.decoder.JSONDecoder()
@@ -10,10 +11,9 @@ jsonDecoder = json.decoder.JSONDecoder()
 # API request
 
 serverAddress = os.getenv("SERVER_ADDRESS")
-statusFetchUrl = f"https://api.mcsrvstat.us/3/{serverAddress}"
-statusJson = jsonDecoder.decode(requests.request("GET", statusFetchUrl).text)
+status = JavaServer.lookup(serverAddress).status()
 
-playerList = statusJson["players"]["list"] if "list" in statusJson["players"] else None
+playerList = status.players.sample
 with open("playerStatuses.json", "a+") as playerStatusesFile:
     playerStatusesFile.seek(0)
     content = playerStatusesFile.read()
@@ -23,23 +23,20 @@ with open("playerStatuses.json", "a+") as playerStatusesFile:
         playerStatuses.clear()
     else:
         currentTime = datetime.now().isoformat()
-        currentPlayers = set()
-
-        for player in playerList:
-            name = player["name"]
-            currentPlayers.add(name)
-            if name not in playerStatuses:
-                playerStatuses[name] = currentTime
 
         for playerName in list(playerStatuses.keys()):
-            if playerName not in currentPlayers:
+            if playerName not in playerList:
                 del playerStatuses[playerName]
+
+        for player in playerList:
+            if player.name not in playerStatuses:
+                playerStatuses[player.name] = currentTime
 
 with open("playerStatuses.json", "w") as playerStatusesFile:
     playerStatusesFile.write(jsonEncoder.encode(playerStatuses))
 
-motd = "\n".join(statusJson["motd"]["clean"])
-playerOnlineCount = statusJson["players"]["online"]
+motd = status.motd.to_plain()
+playerOnlineCount = status.players.online
 
 # Send Discord message
 
@@ -65,15 +62,15 @@ message = {
 }
 
 playerEmbeds = [{
-    "title": name,
+    "title": playerName,
     "image": {
-        "url": f"https://minotar.net/helm/{name}/30"
+        "url": f"https://minotar.net/helm/{playerName}/30"
     },
-    "color": int(hashlib.md5(name.encode()).hexdigest()[:6], 16),
+    "color": int(hashlib.md5(playerName.encode()).hexdigest()[:6], 16),
     "footer": {
-        "text": f"online since {datetime.fromisoformat(playerStatuses[name]).strftime("%H:%M")}"
+        "text": f"online since {datetime.fromisoformat(playerStatuses[playerName]).strftime("%H:%M")}"
     }
-} for name in playerStatuses]
+} for playerName in playerStatuses]
 
 message["embeds"].extend(playerEmbeds)
 
