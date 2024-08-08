@@ -13,7 +13,7 @@ jsonDecoder = json.decoder.JSONDecoder()
 serverAddress = os.getenv("SERVER_ADDRESS")
 status = JavaServer.lookup(serverAddress).status()
 
-playerList = status.players.sample
+playerList = [p.name for p in status.players.sample]
 with open("playerStatuses.json", "a+") as playerStatusesFile:
     playerStatusesFile.seek(0)
     content = playerStatusesFile.read()
@@ -29,8 +29,8 @@ with open("playerStatuses.json", "a+") as playerStatusesFile:
                 del playerStatuses[playerName]
 
         for player in playerList:
-            if player.name not in playerStatuses:
-                playerStatuses[player.name] = currentTime
+            if player not in playerStatuses:
+                playerStatuses[player] = currentTime
 
 with open("playerStatuses.json", "w") as playerStatusesFile:
     playerStatusesFile.write(jsonEncoder.encode(playerStatuses))
