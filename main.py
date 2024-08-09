@@ -16,9 +16,10 @@ currentTime = datetime.now()
 def get_server_status(address: str) -> JavaStatusResponse:
     try:
         server_status = JavaServer.lookup(address).status()
-        server_status.players.sample.sort(key=lambda p: p.name)
-        server_status.players.sample = [p for p in server_status.players.sample
-                                        if p.name != "Anonymous Player"]
+        if server_status.players.sample:
+            server_status.players.sample.sort(key=lambda p: p.name)
+            server_status.players.sample = [p for p in server_status.players.sample
+                                            if p.name != "Anonymous Player"]
     except TimeoutError:
         server_status = None
     return server_status
@@ -26,15 +27,18 @@ def get_server_status(address: str) -> JavaStatusResponse:
 
 def sync_player_status_cache(player_list: list[JavaStatusPlayer]):
     player_statuses = get_player_status_cache()
-    player_list = [p.name for p in player_list]
+    if player_list:
+        player_list = [p.name for p in player_list]
 
-    for player_name in list(player_statuses):
-        if player_name not in player_list:
-            del player_statuses[player_name]
+        for player_name in list(player_statuses):
+            if player_name not in player_list:
+                del player_statuses[player_name]
 
-    for player_name in player_list:
-        if player_name not in player_statuses:
-            player_statuses[player_name] = currentTime.isoformat()
+        for player_name in player_list:
+            if player_name not in player_statuses:
+                player_statuses[player_name] = currentTime.isoformat()
+    else:
+        player_statuses.clear()
 
     with open("playerStatuses.json", "w") as player_statuses_file:
         player_statuses_file.write(jsonEncoder.encode(player_statuses))
@@ -72,7 +76,7 @@ def compose_discord_message(server_status: JavaStatusResponse, player_status_cac
 
     embeds = [create_overview_embed(server_status)]
 
-    if server_is_online:
+    if server_is_online and server_status.players.sample:
         player_embeds = [create_player_embed(
             player, datetime.fromisoformat(player_status_cache[player.name]))
             for player in server_status.players.sample]
